@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# encoding: utf-8
-
 #############################################
 # Autori:   A.D'Ambrosio (ARPAC)
 #           G.Bonafe' (ARPA-FVG)
@@ -12,6 +9,7 @@
 #  2019-01-09  ADAm    prima versione
 #  2019-03-29  GBon    credenziali esterne
 #  2019-04-01  GBon    wget evita interruzioni
+#  2020-07-02  GBon    gestisce case studies  
 ############################################
 
 import urllib2
@@ -21,6 +19,7 @@ import os
 import argparse
 import logging
 import sys
+import re
 
 # configura logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
@@ -30,8 +29,10 @@ parser = argparse.ArgumentParser(description='Download from CKAN')
 parser.add_argument('simulation', help='simulation', choices=['meteo', 'qa'])
 parser.add_argument('domain', help='domain', choices=['centrosud', 'nord'])
 parser.add_argument('type', help='type', choices=['latest', 'older'])
-parser.add_argument('--locdir', default='./',          help='local download directory (default:./)')
-parser.add_argument('--json',   default='./ckan.json', help='JSON with host, username, password (default:./ckan.json)')
+parser.add_argument('--case', default='NULL', help='case study (skip simulation, domain and type)')
+parser.add_argument('--fname', default='.*', help='file name pattern (with Python regular expressions, e.g. ".20190125.*NORD.")')
+parser.add_argument('--locdir', default='./', help='local download directory (default:./)')
+parser.add_argument('--json', default='./ckan.json', help='JSON with host, username, password (default:./ckan.json)')
 args = parser.parse_args()
 
 # legge credenziali dal JSON
@@ -43,9 +44,12 @@ username = json.dumps(ckan_config["username"]).strip('"')
 password = json.dumps(ckan_config["password"]).strip('"')
 host =     json.dumps(ckan_config["host"]).strip('"')
 address = 'https://' + host
-package =   args.simulation + '-' + args.domain
-if args.type == 'older':
-  package = package + '-storico'
+if args.case == "NULL":
+    package =   args.simulation + '-' + args.domain
+    if args.type == 'older':
+        package = package + '-storico'
+else:
+    package =   args.case
 local_dir = args.locdir
 
 #Preparazione richiesta del package desiderato
@@ -62,11 +66,13 @@ except Exception as e:
 assert response.code == 200
 data=response.read()
 
-response_dict = json.loads(data)        # Creazione dizionario dal json
-assert response_dict['success'] is True # Controllo che il messaggio sia valido
-result=response_dict['result']          # Accesso alle risorse
-num_resources = result['num_resources'] # Numero di risorse
-resources=result['resources']           # Nome e url dei files
+response_dict = json.loads(data)            # Creazione dizionario dal json
+assert response_dict['success'] is True     # Controllo che il messaggio sia valido
+result=response_dict['result']              # Accesso alle risorse
+allResources=result['resources']            # Nome e url dei files
+resources = [d for d in allResources if re.search(args.fname,d['name'])] # Filtra col nome
+num_resources = len(resources)              # Numero di risorse
+print(num_resources)
 
 # Download files
 for i in range(0,num_resources):
